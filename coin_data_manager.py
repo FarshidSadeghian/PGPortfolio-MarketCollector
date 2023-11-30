@@ -10,12 +10,10 @@ from datetime import datetime
 
 
 class CoinDataManager:
-    # if offline ,the coin_list could be None
-    # NOTE: return of the sqlite results is a list of tuples,
-    # each tuple is a row.
+
     def __init__(self, coin_number, end, volume_average_days=1,
                  volume_forward=0, online=True, db_directory=None):
-        self._storage_period = FIVE_MINUTES  # keep this as 300
+        self._storage_period = FIVE_MINUTES 
         self._coin_number = coin_number
         self._online = online
         if self._online:
@@ -31,15 +29,7 @@ class CoinDataManager:
         return self._coins
 
     def get_coin_features(self, start, end, period=300, features=('close',)):
-        """
-        Args:
-            start/end: Linux timestamp in seconds.
-            period: Time interval of each data access point.
-            features: Tuple or list of the feature names.
-
-        Returns:
-            A ndarray of shape [feature, coin, time].
-        """
+        
         from matplotlib import pyplot as plt
         start = int(start - (start % period))
         end = int(end - (end % period))
@@ -71,7 +61,7 @@ class CoinDataManager:
                     logging.info("Getting feature {} of coin {}".format(
                         feature, coin
                     ))
-                    # NOTE: transform the start date to end date
+                    
                     if feature == "close":
                         sql = (
                             'SELECT date+300 AS date_norm, close '
@@ -151,7 +141,6 @@ class CoinDataManager:
                                           forward=False, axis=2)
         assert not np.any(np.isnan(data)), "Filling nan failed, unknown error."
 
-        # for manual checking
         # for f in range(data.shape[0]):
         #     for c in range(data.shape[1]):
         #         plt.plot(data[f, c])
@@ -159,16 +148,7 @@ class CoinDataManager:
         return data
 
     def select_coins(self, start, end):
-        """
-        Select top coin_number of coins by volume from start to end.
 
-        Args:
-             start: Start timestamp in seconds.
-             end: End timestamp in seconds.
-
-        Returns:
-            A list of coin name strings.
-        """
         if not self._online:
             logging.info(
                 "Selecting coins offline from %s to %s" %
@@ -233,14 +213,7 @@ class CoinDataManager:
 
     @staticmethod
     def _fill_nan_and_invalid(array, bound=(0, 1), forward=True, axis=-1):
-        """
-        Forward fill or backward fill nan values.
-        See https://stackoverflow.com/questions/41190852
-        /most-efficient-way-to-forward-fill-nan-values-in-numpy-array
 
-        Basical idea is finding non-nan indexes, then use maximum.accumulate
-        or minimum.accumulate to aggregate them
-        """
         mask = np.logical_or(np.isnan(array),
                              np.logical_or(array < bound[0], array > bound[1]))
 
@@ -261,9 +234,7 @@ class CoinDataManager:
         return np.take_along_axis(array, idx, axis=axis)
 
     def _update_data(self, start, end, coin):
-        """
-        Add new history data into the database.
-        """
+
         connection = sqlite3.connect(self._db_dir)
         try:
             cursor = connection.cursor()
@@ -290,13 +261,12 @@ class CoinDataManager:
                                     coin,
                                     cursor)
 
-            # if there is no data
         finally:
             connection.commit()
             connection.close()
 
     def _fill_data(self, start, end, coin, cursor):
-        duration = 7819200  # three months
+        duration = self._storage_period * 100       # poloniex data limit = 100 records per request 
         bk_start = start
         for bk_end in range(start + duration - 1, end, duration):
             self._fill_part_data(bk_start, bk_end, coin, cursor)
@@ -318,20 +288,23 @@ class CoinDataManager:
                 datetime.fromtimestamp(end).strftime('%Y-%m-%d %H:%M')
             ))
         for c in chart:
+
+            c['date']=int(c["date"])
+            c['date']/=1000
+
             if c["date"] > 0:
                 if c['weightedAverage'] == 0:
                     weightedAverage = c['close']
                 else:
                     weightedAverage = c['weightedAverage']
 
-                # NOTE here the USDT is in reversed order
                 if 'reversed_' in coin:
                     cursor.execute(
                         'INSERT INTO History VALUES (?,?,?,?,?,?,?,?,?)',
-                        (c['date'], coin, 1.0 / c['low'], 1.0 / c['high'],
-                         1.0 / c['open'],
-                         1.0 / c['close'], c['quoteVolume'], c['volume'],
-                         1.0 / weightedAverage))
+                        (c['date'], coin, 1.0 / float(c['low']), 1.0 / float(c['high']),
+                         1.0 / float(c['open']),
+                         1.0 / float(c['close']), c['quoteVolume'], c['volume'],
+                         1.0 / float(weightedAverage)))
                 else:
                     cursor.execute(
                         'INSERT INTO History VALUES (?,?,?,?,?,?,?,?,?)',
